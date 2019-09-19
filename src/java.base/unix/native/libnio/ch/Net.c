@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <string.h>
+#include <strings.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <limits.h>
@@ -411,7 +412,7 @@ Java_sun_nio_ch_Net_localPort(JNIEnv *env, jclass clazz, jobject fdo)
          * it shouldn't fail. As such, we just fill in generic Linux-compatible values.
          */
         if (errno == ECONNRESET) {
-            bzero(&sa.sa4, sizeof(sa));
+            bzero(&sa.sa4, sizeof(sa.sa4));
             sa.sa4.sin_len = sizeof(struct sockaddr_in);
             sa.sa4.sin_family = AF_INET;
             sa.sa4.sin_port = htonl(0);
@@ -444,7 +445,7 @@ Java_sun_nio_ch_Net_localInetAddress(JNIEnv *env, jclass clazz, jobject fdo)
          * it shouldn't fail. As such, we just fill in generic Linux-compatible values.
          */
         if (errno == ECONNRESET) {
-            bzero(&sa.sa4, sizeof(sa));
+            bzero(&sa.sa4, sizeof(sa.sa4));
             sa.sa4.sin_len  = sizeof(struct sockaddr_in);
             sa.sa4.sin_family = AF_INET;
             sa.sa4.sin_port = htonl(0);
