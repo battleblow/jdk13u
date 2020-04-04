@@ -52,6 +52,7 @@ class CallNode;
 class CallRuntimeNode;
 class CallStaticJavaNode;
 class CastIINode;
+class CastLLNode;
 class CatchNode;
 class CatchProjNode;
 class CheckCastPPNode;
@@ -390,6 +391,7 @@ protected:
 #ifdef ASSERT
   bool is_dead() const;
 #define is_not_dead(n) ((n) == NULL || !VerifyIterativeGVN || !((n)->is_dead()))
+  bool is_reachable_from_root() const;
 #endif
   // Check whether node has become unreachable
   bool is_unreachable(PhaseIterGVN &igvn) const;
@@ -663,7 +665,8 @@ public:
       DEFINE_CLASS_ID(Phi,   Type, 0)
       DEFINE_CLASS_ID(ConstraintCast, Type, 1)
         DEFINE_CLASS_ID(CastII, ConstraintCast, 0)
-        DEFINE_CLASS_ID(CheckCastPP, ConstraintCast, 1)
+        DEFINE_CLASS_ID(CastLL, ConstraintCast, 1)
+        DEFINE_CLASS_ID(CheckCastPP, ConstraintCast, 2)
       DEFINE_CLASS_ID(CMove, Type, 3)
       DEFINE_CLASS_ID(SafePointScalarObject, Type, 4)
       DEFINE_CLASS_ID(DecodeNarrowPtr, Type, 5)
@@ -801,6 +804,7 @@ public:
   DEFINE_CLASS_QUERY(CatchProj)
   DEFINE_CLASS_QUERY(CheckCastPP)
   DEFINE_CLASS_QUERY(CastII)
+  DEFINE_CLASS_QUERY(CastLL)
   DEFINE_CLASS_QUERY(ConstraintCast)
   DEFINE_CLASS_QUERY(ClearArray)
   DEFINE_CLASS_QUERY(CMove)

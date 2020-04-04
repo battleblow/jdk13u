@@ -1069,26 +1069,21 @@ static bool merge_point_safe(Node* region) {
   // uses.
   // A better fix for this problem can be found in the BugTraq entry, but
   // expediency for Mantis demands this hack.
-  // 6855164: If the merge point has a FastLockNode with a PhiNode input, we stop
-  // split_if_with_blocks from splitting a block because we could not move around
-  // the FastLockNode.
+#ifdef _LP64
   for (DUIterator_Fast imax, i = region->fast_outs(imax); i < imax; i++) {
     Node* n = region->fast_out(i);
     if (n->is_Phi()) {
       for (DUIterator_Fast jmax, j = n->fast_outs(jmax); j < jmax; j++) {
         Node* m = n->fast_out(j);
-        if (m->is_FastLock())
-          return false;
-#ifdef _LP64
         if (m->Opcode() == Op_ConvI2L)
           return false;
         if (m->is_CastII() && m->isa_CastII()->has_range_check()) {
           return false;
         }
-#endif
       }
     }
   }
+#endif
   return true;
 }
 
@@ -1186,6 +1181,22 @@ bool PhaseIdealLoop::can_split_if(Node* n_ctrl) {
   }
 
   return true;
+}
+
+// Detect if the node is the inner strip-mined loop
+// Return: NULL if it's not the case, or the exit of outer strip-mined loop
+static Node* is_inner_of_stripmined_loop(const Node* out) {
+  Node* out_le = NULL;
+
+  if (out->is_CountedLoopEnd()) {
+      const CountedLoopNode* loop = out->as_CountedLoopEnd()->loopnode();
+
+      if (loop != NULL && loop->is_strip_mined()) {
+        out_le = loop->in(LoopNode::EntryControl)->as_OuterStripMinedLoop()->outer_loop_exit();
+      }
+  }
+
+  return out_le;
 }
 
 //------------------------------split_if_with_blocks_post----------------------
@@ -1321,6 +1332,15 @@ void PhaseIdealLoop::split_if_with_blocks_post(Node *n) {
       Node *dom = idom(prevdom);
       while (dom != cutoff) {
         if (dom->req() > 1 && dom->in(1) == bol && prevdom->in(0) == dom) {
+          // It's invalid to move control dependent data nodes in the inner
+          // strip-mined loop, because:
+          //  1) break validation of LoopNode::verify_strip_mined()
+          //  2) move code with side-effect in strip-mined loop
+          // Move to the exit of outer strip-mined loop in that case.
+          Node* out_le = is_inner_of_stripmined_loop(dom);
+          if (out_le != NULL) {
+            prevdom = out_le;
+          }
           // Replace the dominated test with an obvious true or false.
           // Place it on the IGVN worklist for later cleanup.
           C->set_major_progress();
@@ -1691,7 +1711,8 @@ void PhaseIdealLoop::clone_loop_handle_data_uses(Node* old, Node_List &old_new,
 #ifdef ASSERT
     if (loop->_head->as_Loop()->is_strip_mined() && outer_loop->is_member(use_loop) && !loop->is_member(use_loop) && old_new[use->_idx] == NULL) {
       Node* sfpt = loop->_head->as_CountedLoop()->outer_safepoint();
-      assert(mode == ControlAroundStripMined && use == sfpt, "missed a node");
+      assert(mode != IgnoreStripMined, "incorrect cloning mode");
+      assert((mode == ControlAroundStripMined && use == sfpt) || !use->is_reachable_from_root(), "missed a node");
     }
 #endif
     if (!loop->is_member(use_loop) && !outer_loop->is_member(use_loop) && (!old->is_CFG() || !use->is_CFG())) {
