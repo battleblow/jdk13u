@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -2032,7 +2032,7 @@ char* SharedRuntime::generate_class_cast_message(
   const char* caster_name = caster_klass->external_name();
 
   assert(target_klass != NULL || target_klass_name != NULL, "one must be provided");
-  const char* target_name = target_klass == NULL ? target_klass_name->as_C_string() :
+  const char* target_name = target_klass == NULL ? target_klass_name->as_klass_external_name() :
                                                    target_klass->external_name();
 
   size_t msglen = strlen(caster_name) + strlen("class ") + strlen(" cannot be cast to class ") + strlen(target_name) + 1;
@@ -2849,10 +2849,16 @@ bool AdapterHandlerEntry::compare_code(unsigned char* buffer, int length) {
 void AdapterHandlerLibrary::create_native_wrapper(const methodHandle& method) {
   ResourceMark rm;
   nmethod* nm = NULL;
+  address critical_entry = NULL;
 
   assert(method->is_native(), "must be native");
   assert(method->is_method_handle_intrinsic() ||
          method->has_native_function(), "must have something valid to call!");
+
+  if (CriticalJNINatives && !method->is_method_handle_intrinsic()) {
+    // We perform the I/O with transition to native before acquiring AdapterHandlerLibrary_lock.
+    critical_entry = NativeLookup::lookup_critical_entry(method);
+  }
 
   {
     // Perform the work while holding the lock, but perform any printing outside the lock
@@ -2898,7 +2904,7 @@ void AdapterHandlerLibrary::create_native_wrapper(const methodHandle& method) {
       int comp_args_on_stack = SharedRuntime::java_calling_convention(sig_bt, regs, total_args_passed, is_outgoing);
 
       // Generate the compiled-to-native wrapper code
-      nm = SharedRuntime::generate_native_wrapper(&_masm, method, compile_id, sig_bt, regs, ret_type);
+      nm = SharedRuntime::generate_native_wrapper(&_masm, method, compile_id, sig_bt, regs, ret_type, critical_entry);
 
       if (nm != NULL) {
         method->set_code(method, nm);
