@@ -26,9 +26,13 @@
 package jdk.internal.platform.cgroupv1;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.stream.Stream;
 
 import jdk.internal.platform.cgroupv1.SubSystem.MemorySubSystem;
@@ -57,6 +61,9 @@ public class Metrics implements jdk.internal.platform.Metrics {
     }
 
     private static Metrics initContainerSubSystems() {
+        if (!isUseContainerSupport()) {
+            return null;
+        }
         Metrics metrics = new Metrics();
 
         /**
@@ -70,13 +77,15 @@ public class Metrics implements jdk.internal.platform.Metrics {
          * 34 28 0:29 / /sys/fs/cgroup/MemorySubSystem rw,nosuid,nodev,noexec,relatime shared:16 - cgroup cgroup rw,MemorySubSystem
          */
         try (Stream<String> lines =
-             Files.lines(Paths.get("/proc/self/mountinfo"))) {
+             readFilePrivileged(Paths.get("/proc/self/mountinfo"))) {
 
             lines.filter(line -> line.contains(" - cgroup "))
                  .map(line -> line.split(" "))
                  .forEach(entry -> createSubSystem(metrics, entry));
 
         } catch (IOException e) {
+            return null;
+        } catch (UncheckedIOException e) {
             return null;
         }
 
@@ -104,13 +113,15 @@ public class Metrics implements jdk.internal.platform.Metrics {
          *
          */
         try (Stream<String> lines =
-             Files.lines(Paths.get("/proc/self/cgroup"))) {
+             readFilePrivileged(Paths.get("/proc/self/cgroup"))) {
 
             lines.map(line -> line.split(":"))
                  .filter(line -> (line.length >= 3))
                  .forEach(line -> setSubSystemPath(metrics, line));
 
         } catch (IOException e) {
+            return null;
+        } catch (UncheckedIOException e) {
             return null;
         }
 
@@ -122,6 +133,27 @@ public class Metrics implements jdk.internal.platform.Metrics {
         return null;
     }
 
+    static Stream<String> readFilePrivileged(Path path) throws IOException {
+        try {
+            PrivilegedExceptionAction<Stream<String>> pea = () -> Files.lines(path);
+            return AccessController.doPrivileged(pea);
+        } catch (PrivilegedActionException e) {
+            unwrapIOExceptionAndRethrow(e);
+            throw new InternalError(e.getCause());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    static void unwrapIOExceptionAndRethrow(PrivilegedActionException pae) throws IOException {
+        Throwable x = pae.getCause();
+        if (x instanceof IOException)
+            throw (IOException) x;
+        if (x instanceof RuntimeException)
+            throw (RuntimeException) x;
+        if (x instanceof Error)
+            throw (Error) x;
+    }
     /**
      * createSubSystem objects and initialize mount points
      */
@@ -159,53 +191,52 @@ public class Metrics implements jdk.internal.platform.Metrics {
      * setSubSystemPath based on the contents of /proc/self/cgroup
      */
     private static void setSubSystemPath(Metrics metric, String[] entry) {
-        String controller;
-        String base;
-        SubSystem subsystem = null;
-        SubSystem subsystem2 = null;
-
-        controller = entry[1];
-        base = entry[2];
+        String controller = entry[1];
+        String base = entry[2];
         if (controller != null && base != null) {
-            switch (controller) {
-                case "memory":
-                    subsystem = metric.MemorySubSystem();
-                    break;
-                case "cpuset":
-                    subsystem = metric.CpuSetSubSystem();
-                    break;
-                case "cpu,cpuacct":
-                case "cpuacct,cpu":
-                    subsystem = metric.CpuSubSystem();
-                    subsystem2 = metric.CpuAcctSubSystem();
-                    break;
-                case "cpuacct":
-                    subsystem = metric.CpuAcctSubSystem();
-                    break;
-                case "cpu":
-                    subsystem = metric.CpuSubSystem();
-                    break;
-                case "blkio":
-                    subsystem = metric.BlkIOSubSystem();
-                    break;
-                // Ignore subsystems that we don't support
-                default:
-                    break;
+            for (String cName: controller.split(",")) {
+                switch (cName) {
+                    case "memory":
+                        setPath(metric, metric.MemorySubSystem(), base);
+                        break;
+                    case "cpuset":
+                        setPath(metric, metric.CpuSetSubSystem(), base);
+                        break;
+                    case "cpuacct":
+                        setPath(metric, metric.CpuAcctSubSystem(), base);
+                        break;
+                    case "cpu":
+                        setPath(metric, metric.CpuSubSystem(), base);
+                        break;
+                    case "blkio":
+                        setPath(metric, metric.BlkIOSubSystem(), base);
+                        break;
+                    // Ignore subsystems that we don't support
+                    default:
+                        break;
+                }
             }
         }
+    }
 
+    private static void setPath(Metrics metric, SubSystem subsystem, String base) {
         if (subsystem != null) {
             subsystem.setPath(base);
             if (subsystem instanceof MemorySubSystem) {
                 MemorySubSystem memorySubSystem = (MemorySubSystem)subsystem;
                 boolean isHierarchial = getHierarchical(memorySubSystem);
                 memorySubSystem.setHierarchical(isHierarchial);
+                boolean isSwapEnabled = getSwapEnabled(memorySubSystem);
+                memorySubSystem.setSwapEnabled(isSwapEnabled);
             }
             metric.setActiveSubSystems();
         }
-        if (subsystem2 != null) {
-            subsystem2.setPath(base);
-        }
+    }
+
+
+    private static boolean getSwapEnabled(MemorySubSystem subsystem) {
+        long retval = SubSystem.getLongValue(subsystem, "memory.memsw.limit_in_bytes");
+        return retval > 0;
     }
 
 
@@ -443,10 +474,16 @@ public class Metrics implements jdk.internal.platform.Metrics {
     }
 
     public long getMemoryAndSwapFailCount() {
+        if (!memory.isSwapEnabled()) {
+            return getMemoryFailCount();
+        }
         return SubSystem.getLongValue(memory, "memory.memsw.failcnt");
     }
 
     public long getMemoryAndSwapLimit() {
+        if (!memory.isSwapEnabled()) {
+            return getMemoryLimit();
+        }
         long retval = SubSystem.getLongValue(memory, "memory.memsw.limit_in_bytes");
         if (retval > unlimited_minimum) {
             if (memory.isHierarchical()) {
@@ -463,10 +500,16 @@ public class Metrics implements jdk.internal.platform.Metrics {
     }
 
     public long getMemoryAndSwapMaxUsage() {
+        if (!memory.isSwapEnabled()) {
+            return getMemoryMaxUsage();
+        }
         return SubSystem.getLongValue(memory, "memory.memsw.max_usage_in_bytes");
     }
 
     public long getMemoryAndSwapUsage() {
+        if (!memory.isSwapEnabled()) {
+            return getMemoryUsage();
+        }
         return SubSystem.getLongValue(memory, "memory.memsw.usage_in_bytes");
     }
 
@@ -493,5 +536,7 @@ public class Metrics implements jdk.internal.platform.Metrics {
     public long getBlkIOServiced() {
         return SubSystem.getLongEntry(blkio, "blkio.throttle.io_serviced", "Total");
     }
+
+    private static native boolean isUseContainerSupport();
 
 }

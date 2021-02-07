@@ -27,9 +27,13 @@ package jdk.internal.platform.cgroupv1;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -90,14 +94,26 @@ public class SubSystem {
     public static String getStringValue(SubSystem subsystem, String parm) {
         if (subsystem == null) return null;
 
-        try(BufferedReader bufferedReader = Files.newBufferedReader(Paths.get(subsystem.path(), parm))) {
-            String line = bufferedReader.readLine();
-            return line;
-        }
-        catch (IOException e) {
+        try {
+            return subsystem.readStringValue(parm);
+        } catch (IOException e) {
             return null;
         }
+    }
 
+    private String readStringValue(String param) throws IOException {
+        PrivilegedExceptionAction<BufferedReader> pea = () ->
+                Files.newBufferedReader(Paths.get(path(), param));
+        try (BufferedReader bufferedReader =
+                     AccessController.doPrivileged(pea)) {
+            String line = bufferedReader.readLine();
+            return line;
+        } catch (PrivilegedActionException e) {
+            Metrics.unwrapIOExceptionAndRethrow(e);
+            throw new InternalError(e.getCause());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     public static long getLongValueMatchingLine(SubSystem subsystem,
@@ -106,8 +122,8 @@ public class SubSystem {
                                                      Function<String, Long> conversion) {
         long retval = Metrics.unlimited_minimum + 1; // default unlimited
         try {
-            List<String> lines = Files.readAllLines(Paths.get(subsystem.path(), param));
-            for (String line: lines) {
+            List<String> lines = subsystem.readMatchingLines(param);
+            for (String line : lines) {
                 if (line.startsWith(match)) {
                     retval = conversion.apply(line);
                     break;
@@ -117,6 +133,19 @@ public class SubSystem {
             // Ignore. Default is unlimited.
         }
         return retval;
+    }
+
+    private List<String> readMatchingLines(String param) throws IOException {
+        try {
+            PrivilegedExceptionAction<List<String>> pea = () ->
+                    Files.readAllLines(Paths.get(path(), param));
+            return AccessController.doPrivileged(pea);
+        } catch (PrivilegedActionException e) {
+            Metrics.unwrapIOExceptionAndRethrow(e);
+            throw new InternalError(e.getCause());
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
     }
 
     public static long getLongValue(SubSystem subsystem, String parm) {
@@ -169,7 +198,7 @@ public class SubSystem {
 
         if (subsystem == null) return 0L;
 
-        try (Stream<String> lines = Files.lines(Paths.get(subsystem.path(), parm))) {
+        try (Stream<String> lines = Metrics.readFilePrivileged(Paths.get(subsystem.path(), parm))) {
 
             Optional<String> result = lines.map(line -> line.split(" "))
                                            .filter(line -> (line.length == 2 &&
@@ -178,8 +207,9 @@ public class SubSystem {
                                            .findFirst();
 
             return result.isPresent() ? Long.parseLong(result.get()) : 0L;
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
+            return 0L;
+        } catch (UncheckedIOException e) {
             return 0L;
         }
     }
@@ -242,6 +272,7 @@ public class SubSystem {
     public static class MemorySubSystem extends SubSystem {
 
         private boolean hierarchical;
+        private boolean swapenabled;
 
         public MemorySubSystem(String root, String mountPoint) {
             super(root, mountPoint);
@@ -255,5 +286,12 @@ public class SubSystem {
             this.hierarchical = hierarchical;
         }
 
+        boolean isSwapEnabled() {
+            return swapenabled;
+        }
+
+        void setSwapEnabled(boolean swapenabled) {
+            this.swapenabled = swapenabled;
+        }
     }
 }
