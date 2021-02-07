@@ -148,3 +148,23 @@ Java_com_sun_management_internal_OperatingSystemImpl_getProcessCpuLoad0
     return -1.;
 #endif
 }
+
+JNIEXPORT jdouble JNICALL
+Java_com_sun_management_internal_OperatingSystemImpl_getSingleCpuLoad0
+(JNIEnv *env, jobject dummy, jint cpu_number)
+{
+    // Not implemented yet
+    return -1.0;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_sun_management_internal_OperatingSystemImpl_getHostConfiguredCpuCount0
+(JNIEnv *env, jobject mbean)
+{
+#ifdef __FreeBSD__
+    return JVM_ActiveProcessorCount();
+#else
+    // Not implemented yet
+    return -1;
+#endif
+}
