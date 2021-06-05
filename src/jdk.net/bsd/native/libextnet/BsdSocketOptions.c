@@ -61,6 +61,11 @@ static void handleError(JNIEnv *env, jint rv, const char *errmsg) {
 }
 
 /*
+ * Declare library specific JNI_Onload entry if static build
+ */
+DEF_STATIC_JNI_OnLoad
+
+/*
  * Class:     jdk_net_BsdSocketOptions
  * Method:    keepAliveOptionsSupported0
  * Signature: ()Z
