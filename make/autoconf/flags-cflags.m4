@@ -456,7 +456,8 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
   elif test "x$OPENJDK_TARGET_OS" = xaix; then
     CFLAGS_OS_DEF_JVM="-DAIX"
   elif test "x$OPENJDK_TARGET_OS" = xbsd; then
-    CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE"
+    CFLAGS_OS_DEF_JVM="-D_ALLBSD_SOURCE -D_BSDONLY_SOURCE"
+    CFLAGS_OS_DEF_JDK="-D_ALLBSD_SOURCE -D_BSDONLY_SOURCE -D_REENTRANT"
   elif test "x$OPENJDK_TARGET_OS" = xwindows; then
     CFLAGS_OS_DEF_JVM="-D_WINDOWS -DWIN32 -D_JNI_IMPLEMENTATION_"
   fi
@@ -552,6 +553,10 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
     # works for all platforms.
     TOOLCHAIN_CFLAGS_JVM="$TOOLCHAIN_CFLAGS_JVM -mno-omit-leaf-frame-pointer -mstack-alignment=16"
 
+    if test "x$OPENJDK_TARGET_CPU" = xx86; then
+      TOOLCHAIN_CFLAGS_JVM="$TOOLCHAIN_CFLAGS_JVM -mstackrealign"
+    fi
+
     if test "x$OPENJDK_TARGET_OS" = xlinux; then
       if test "x$DEBUG_LEVEL" = xrelease; then
         # Clang does not inline as much as GCC does for functions with "inline" keyword by default.
@@ -561,6 +566,16 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
       fi
       TOOLCHAIN_CFLAGS_JDK="-pipe"
       TOOLCHAIN_CFLAGS_JDK_CONLY="-fno-strict-aliasing" # technically NOT for CXX
+    elif test "x$OPENJDK_TARGET_OS" = xbsd; then
+      TOOLCHAIN_CFLAGS_JDK="-pipe"
+      TOOLCHAIN_CFLAGS_JDK_CONLY="-fno-strict-aliasing" # technically NOT for CXX
+
+      CXXSTD_CXXFLAG="-std=gnu++98"
+      FLAGS_CXX_COMPILER_CHECK_ARGUMENTS(ARGUMENT: [$CXXSTD_CXXFLAG -Werror],
+                                                    IF_FALSE: [CXXSTD_CXXFLAG=""])
+      TOOLCHAIN_CFLAGS_JDK_CXXONLY="$CXXSTD_CXXFLAG"
+      TOOLCHAIN_CFLAGS_JVM="$TOOLCHAIN_CFLAGS_JVM $CXXSTD_CXXFLAG"
+      ADLC_CXXFLAG="$CXXSTD_CXXFLAG"
     fi
   elif test "x$TOOLCHAIN_TYPE" = xsolstudio; then
     TOOLCHAIN_FLAGS="-errtags -errfmt"
@@ -756,7 +771,7 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_CPU_DEP],
   if test "x$FLAGS_CPU_BITS" = x64; then
     # -D_LP64=1 is only set on linux and mac. Setting on windows causes diff in
     # unpack200.exe.
-    if test "x$FLAGS_OS" = xlinux || test "x$FLAGS_OS" = xmacosx; then
+    if test "x$FLAGS_OS" = xlinux || test "x$FLAGS_OS" = xmacosx || test "x$FLAGS_OS" = xbsd; then
       $1_DEFINES_CPU_JDK="${$1_DEFINES_CPU_JDK} -D_LP64=1"
     fi
     if test "x$FLAGS_OS" != xsolaris && test "x$FLAGS_OS" != xaix; then
@@ -839,6 +854,14 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_CPU_DEP],
         # for all archs except arm and ppc, prevent gcc to omit frame pointer
         $1_CFLAGS_CPU_JDK="${$1_CFLAGS_CPU_JDK} -fno-omit-frame-pointer"
       fi
+    elif test "x$OPENJDK_TARGET_OS_ENV" = xbsd.freebsd; then
+        if test "x$FLAGS_CPU" = xppc64; then
+            $1_CFLAGS_CPU_JVM="${$1_CFLAGS_CPU_JVM} -DABI_ELFv2 -mcpu=powerpc64 -mtune=power5"
+        elif test "x$FLAGS_CPU" = xppc64le; then
+            # Little endian machine uses ELFv2 ABI.
+            # Use Power8, this is the first CPU to support PPC64 LE with ELFv2 ABI.
+            $1_CFLAGS_CPU_JVM="${$1_CFLAGS_CPU_JVM} -DABI_ELFv2 -mcpu=power8 -mtune=power8"
+        fi
     fi
 
   elif test "x$TOOLCHAIN_TYPE" = xsolstudio; then

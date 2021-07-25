@@ -40,6 +40,7 @@ include Awt2dLibraries.gmk
 # Create the libjsound library
 
 ifeq ($(call isTargetOs, aix), false)
+ifneq ($(OPENJDK_TARGET_OS_ENV), bsd.openbsd)
 
   LIBJSOUND_CFLAGS := \
       $(ALSA_CFLAGS) \
@@ -48,7 +49,7 @@ ifeq ($(call isTargetOs, aix), false)
       -DUSE_DAUDIO=TRUE \
       #
 
-  ifeq ($(call isTargetOs, solaris), false)
+  ifeq ($(call isTargetOs, solaris bsd), false)
     LIBJSOUND_CFLAGS += \
         -DUSE_PLATFORM_MIDI_OUT=TRUE \
         -DUSE_PLATFORM_MIDI_IN=TRUE \
@@ -59,8 +60,13 @@ ifeq ($(call isTargetOs, aix), false)
     LIBJSOUND_TOOLCHAIN := TOOLCHAIN_LINK_CXX
   endif
 
+  ifeq ($(call isTargetOs, bsd), true)
+    LIBJSOUND_CFLAGS += $(ICONV_CFLAGS)
+  endif
+
   $(eval $(call SetupJdkLibrary, BUILD_LIBJSOUND, \
       NAME := jsound, \
+      EXCLUDE_SRC_PATTERNS := $(LIBJSOUND_EXCLUDE_SRC_PATTERNS), \
       TOOLCHAIN := $(LIBJSOUND_TOOLCHAIN), \
       OPTIMIZATION := LOW, \
       CFLAGS := $(CFLAGS_JDKLIB) \
@@ -70,8 +76,10 @@ ifeq ($(call isTargetOs, aix), false)
       DISABLED_WARNINGS_clang := undef, \
       LDFLAGS := $(LDFLAGS_JDKLIB) \
           $(call SET_SHARED_LIBRARY_ORIGIN), \
+      LDFLAGS_bsd := $(ICONV_LDFLAGS), \
       LIBS_unix := -ljava -ljvm, \
       LIBS_linux := $(ALSA_LIBS), \
+      LIBS_bsd := $(ALSA_LIBS), \
       LIBS_macosx := -framework CoreAudio -framework CoreFoundation \
           -framework CoreServices -framework AudioUnit \
           -framework CoreMIDI -framework AudioToolbox $(LIBCXX), \
@@ -82,6 +90,7 @@ ifeq ($(call isTargetOs, aix), false)
 
   TARGETS += $(BUILD_LIBJSOUND)
 
+endif
 endif
 
 ################################################################################

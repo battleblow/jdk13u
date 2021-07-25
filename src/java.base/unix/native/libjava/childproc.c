@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,6 +33,7 @@
 
 #include "childproc.h"
 
+const char * const *parentPathv;
 
 ssize_t
 restartableWrite(int fd, const void *buf, size_t count)
@@ -62,6 +63,32 @@ isAsciiDigit(char c)
   return c >= '0' && c <= '9';
 }
 
+#if defined(_BSDONLY_SOURCE)
+/*
+ * Quoting POSIX: "If a multi-threaded process calls fork(), the new
+ * process shall contain a replica of the calling thread and its entire
+ * address space, possibly including the states of mutexes and other
+ * resources. Consequently, to avoid errors, the child process may only
+ * execute async-signal-safe operations until such time as one of the exec
+ * functions is called."
+ *
+ * opendir and readir are not async-signal-safe and can deadlock when
+ * called after fork or vfork (and before exec) so use closefrom syscall
+ * which is safe to call after forking.
+ */
+int
+closeDescriptors(void)
+{
+#if defined(__FreeBSD__)
+    closefrom(FAIL_FILENO + 1);
+#else
+    int err;
+    RESTARTABLE(closefrom(FAIL_FILENO + 1), err);
+#endif
+    return 1;
+}
+#else
+
 #if defined(_AIX)
   /* AIX does not understand '/proc/self' - it requires the real process ID */
   #define FD_DIR aix_fd_dir
@@ -70,7 +97,7 @@ isAsciiDigit(char c)
   #define opendir opendir64
   #define readdir readdir64
   #define closedir closedir64
-#elif defined(_ALLBSD_SOURCE)
+#elif defined(MACOSX)
   #define FD_DIR "/dev/fd"
 #else
   #define FD_DIR "/proc/self/fd"
@@ -113,6 +140,7 @@ closeDescriptors(void)
 
     return 1;
 }
+#endif /* _BSDONLY_SOURCE */
 
 int
 moveDescriptor(int fd_from, int fd_to)

@@ -69,9 +69,12 @@ AC_DEFUN([FLAGS_SETUP_LDFLAGS_HELPER],
       LIBJSIG_HASHSTYLE_LDFLAGS="-Wl,--hash-style=both"
     fi
 
-    # Add -z defs, to forbid undefined symbols in object files.
+    if test "x$OPENJDK_TARGET_OS" != xbsd; then
+        # Add -z defs, to forbid undefined symbols in object files.
+        BASIC_LDFLAGS="$BASIC_LDFLAGS -Wl,-z,defs"
+    fi
     # add relro (mark relocations read only) for all libs
-    BASIC_LDFLAGS="$BASIC_LDFLAGS -Wl,-z,defs -Wl,-z,relro"
+    BASIC_LDFLAGS="$BASIC_LDFLAGS -Wl,-z,relro"
     BASIC_LDFLAGS_JVM_ONLY="-Wl,-O1"
 
   elif test "x$TOOLCHAIN_TYPE" = xclang; then
@@ -112,6 +115,29 @@ AC_DEFUN([FLAGS_SETUP_LDFLAGS_HELPER],
       OS_LDFLAGS_JVM_ONLY="-Wl,-rpath,@loader_path/. -Wl,-rpath,@loader_path/.."
       OS_LDFLAGS="-mmacosx-version-min=$MACOSX_VERSION_MIN"
     fi
+    # On OpenBSD check to see if ld requires -z wxneeded
+    if test "x$OPENJDK_TARGET_OS_ENV" = xbsd.openbsd; then
+      AC_MSG_CHECKING([if ld requires -z wxneeded])
+      PUSHED_LDFLAGS="$LDFLAGS"
+      LDFLAGS="$LDFLAGS -Wl,-z,wxneeded"
+      AC_LINK_IFELSE([AC_LANG_SOURCE([[int main() { }]])],
+          [
+            if $READELF -l conftest$ac_exeext | $GREP WXNEED > /dev/null; then
+              AC_MSG_RESULT([yes])
+              OS_LDFLAGS_JDK_ONLY="-Wl,-z,wxneeded"
+            else
+              AC_MSG_RESULT([no])
+            fi
+          ],
+          [
+            AC_MSG_RESULT([no])
+          ],
+          [
+            AC_MSG_RESULT([no])
+          ]
+      )
+      LDFLAGS="$PUSHED_LDFLAGS"
+    fi
   fi
 
   # Setup debug level-dependent LDFLAGS
@@ -146,6 +172,9 @@ AC_DEFUN([FLAGS_SETUP_LDFLAGS_HELPER],
   # Setup LDFLAGS for linking executables
   if test "x$TOOLCHAIN_TYPE" = xgcc; then
     EXECUTABLE_LDFLAGS="$EXECUTABLE_LDFLAGS -Wl,--allow-shlib-undefined"
+  fi
+
+  if test "x$TOOLCHAIN_TYPE" = xgcc || test "x$TOOLCHAIN_TYPE" = xclang; then
     # Enabling pie on 32 bit builds prevents the JVM from allocating a continuous
     # java heap.
     if test "x$OPENJDK_TARGET_CPU_BITS" != "x32"; then

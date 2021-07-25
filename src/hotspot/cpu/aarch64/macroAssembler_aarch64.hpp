@@ -89,7 +89,7 @@ class MacroAssembler: public Assembler {
       = operand_valid_for_logical_immediate
            (/*is32*/false, (uint64_t)CompressedKlassPointers::base())
          && ((uint64_t)CompressedKlassPointers::base()
-             > (1UL << log2_intptr(CompressedKlassPointers::range())));
+             > (1UL << log2_intptr((uintptr_t)CompressedKlassPointers::range())));
   }
 
  // These routines should emit JVMTI PopFrame and ForceEarlyReturn handling code.

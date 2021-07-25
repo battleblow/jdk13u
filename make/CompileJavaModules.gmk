@@ -58,7 +58,7 @@ ifeq ($(call isTargetOs, solaris), false)
       #
 endif
 
-ifeq ($(call isTargetOs, solaris macosx aix), false)
+ifeq ($(call isTargetOs, solaris macosx aix bsd), false)
   java.base_EXCLUDE_FILES += sun/nio/fs/PollingWatchService.java
 endif
 
@@ -376,6 +376,22 @@ endif
 
 ifeq ($(call isTargetOs, aix), true)
   jdk.sctp_EXCLUDE_FILES += $(SCTP_IMPL_CLASSES)
+endif
+
+ifeq ($(OPENJDK_TARGET_OS_ENV), bsd.openbsd)
+  jdk.sctp_EXCLUDE_FILES += $(SCTP_IMPL_CLASSES)
+  ## WORKAROUND need to provide Impl classes that throw UnsupportedOperationException
+  ifeq ($(MODULE), jdk.sctp)
+    SRC_SUBDIRS += macosx/classes
+  endif
+endif
+
+ifeq ($(OPENJDK_TARGET_OS_ENV), bsd.netbsd)
+  jdk.sctp_EXCLUDE_FILES += $(SCTP_IMPL_CLASSES)
+  ## WORKAROUND need to provide Impl classes that throw UnsupportedOperationException
+  ifeq ($(MODULE), jdk.sctp)
+    SRC_SUBDIRS += macosx/classes
+  endif
 endif
 
 ################################################################################
