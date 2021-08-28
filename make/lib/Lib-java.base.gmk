@@ -103,8 +103,6 @@ $(BUILD_LIBNIO): $(BUILD_LIBNET)
 # Create the macosx security library
 
 ifeq ($(call isTargetOs, macosx), true)
-  # JavaNativeFoundation framework not supported in static builds
-  ifneq ($(STATIC_BUILD), true)
 
     $(eval $(call SetupJdkLibrary, BUILD_LIBOSXSECURITY, \
         NAME := osxsecurity, \
@@ -127,7 +125,6 @@ ifeq ($(call isTargetOs, macosx), true)
 
     TARGETS += $(BUILD_LIBOSXSECURITY)
 
-  endif
 endif
 
 ################################################################################
