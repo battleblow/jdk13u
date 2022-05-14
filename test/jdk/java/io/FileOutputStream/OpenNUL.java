@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, SAP SE. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,31 +23,30 @@
 
 /*
  * @test
- * @bug 8284548
- * @summary Test whether the expected exception is thrown when
- *           trying to compile an invalid XPath expression.
- * @run main InvalidXPath
+ * @bug 8285445
+ * @requires (os.family == "windows")
+ * @summary Verify behavior of opening "NUL:" with ADS enabled and disabled.
+ * @run main/othervm -Djdk.io.File.enableADS OpenNUL
+ * @run main/othervm -Djdk.io.File.enableADS=true OpenNUL
  */
 
-import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
-public class InvalidXPath {
+public class OpenNUL {
+    public static void main(String args[]) throws IOException {
+        String enableADS = System.getProperty("jdk.io.File.enableADS");
+        boolean fails = enableADS.equalsIgnoreCase(Boolean.FALSE.toString());
 
-    public static void main(String... args) {
-        // define an invalid XPath expression
-        final String invalidXPath = ">>";
-
-        // expect XPathExpressionException when the invalid XPath expression is compiled
+        FileOutputStream fos;
         try {
-            XPathFactory.newInstance().newXPath().compile(invalidXPath);
-        } catch (XPathExpressionException e) {
-            System.out.println("Caught expected exception: " + e.getClass().getName() +
-                    "(" + e.getMessage() + ").");
-        } catch (Exception e) {
-            System.out.println("Caught unexpected exception: " + e.getClass().getName() +
-                    "(" + e.getMessage() + ")!");
-            throw e;
+            fos = new FileOutputStream("NUL:");
+            if (fails)
+                throw new RuntimeException("Should have failed");
+        } catch (FileNotFoundException fnfe) {
+            if (!fails)
+                throw new RuntimeException("Should not have failed");
         }
     }
 }
