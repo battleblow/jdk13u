@@ -28,6 +28,7 @@ $(eval $(call IncludeCustomExtension, lib/Awt2dLibraries-pre.gmk))
 WIN_AWT_LIB := $(SUPPORT_OUTPUTDIR)/native/$(MODULE)/libawt/awt.lib
 
 LIBAWT_DEFAULT_HEADER_DIRS := \
+    common/awt/utility \
     libawt/awt/image \
     libawt/awt/image/cvutils \
     libawt/java2d \
@@ -436,7 +437,7 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBJAVAJPEG, \
     OPTIMIZATION := HIGHEST, \
     CFLAGS := $(CFLAGS_JDKLIB) $(JPEG_CFLAGS), \
     HEADERS_FROM_SRC := $(LIBJPEG_HEADERS_FROM_SRC), \
-    DISABLED_WARNINGS_gcc := clobbered implicit-fallthrough shift-negative-value, \
+    DISABLED_WARNINGS_gcc := clobbered implicit-fallthrough shift-negative-value array-bounds, \
     LDFLAGS := $(LDFLAGS_JDKLIB) \
         $(call SET_SHARED_LIBRARY_ORIGIN), \
     LIBS := $(JDKLIB_LIBS) $(JPEG_LIBS), \
@@ -465,7 +466,6 @@ ifeq ($(call isTargetOs, windows macosx), false)
       common/awt/debug \
       common/font \
       common/java2d/opengl \
-      include \
       #
 
   LIBAWT_HEADLESS_CFLAGS := $(CUPS_CFLAGS) $(FONTCONFIG_CFLAGS) $(X_CFLAGS) \
@@ -590,22 +590,29 @@ else
 
 endif
 
-
 LIBFONTMANAGER_EXTRA_HEADER_DIRS := \
     libharfbuzz \
     libharfbuzz/hb-ucdn \
     common/awt \
+    common/awt/utility \
     common/font \
     libawt/java2d \
     libawt/java2d/pipe \
     libawt/java2d/loops \
-    include \
     #
 
 LIBFONTMANAGER_CFLAGS += $(LIBFREETYPE_CFLAGS)
 BUILD_LIBFONTMANAGER_FONTLIB +=  $(LIBFREETYPE_LIBS)
 
 LIBFONTMANAGER_OPTIMIZATION := HIGHEST
+
+ifneq ($(filter $(TOOLCHAIN_TYPE), gcc clang), )
+  # gcc (and to an extent clang) is particularly bad at optimizing these files,
+  # causing a massive spike in compile time. We don't care about these
+  # particular files anyway, so lower optimization level.
+  BUILD_LIBFONTMANAGER_hb-subset.cc_OPTIMIZATION := SIZE
+  BUILD_LIBFONTMANAGER_hb-subset-plan.cc_OPTIMIZATION := SIZE
+endif
 
 ifeq ($(call isTargetOs, windows), true)
   LIBFONTMANAGER_EXCLUDE_FILES += X11FontScaler.c \
@@ -684,6 +691,7 @@ ifeq ($(call isTargetOs, windows), true)
   LIBJAWT_EXTRA_HEADER_DIRS := \
       include \
       common/awt/debug \
+      common/awt/utility \
       libawt/awt/image/cvutils \
       libawt/java2d \
       libawt/java2d/windows \
@@ -783,7 +791,7 @@ ifeq ($(ENABLE_HEADLESS_ONLY), false)
       common/awt/systemscale \
       #
 
-  LIBSPLASHSCREEN_HEADER_DIRS += include
+  LIBSPLASHSCREEN_HEADER_DIRS += common/awt/utility
 
   ifeq ($(USE_EXTERNAL_LIBGIF), false)
     LIBSPLASHSCREEN_HEADER_DIRS += libsplashscreen/giflib
