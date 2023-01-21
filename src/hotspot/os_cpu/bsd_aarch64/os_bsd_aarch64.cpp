@@ -306,9 +306,11 @@ JVM_handle_bsd_signal(int sig,
   if (info != NULL && uc != NULL && thread != NULL) {
     pc = (address) os::Bsd::ucontext_get_pc(uc);
 
-    if (StubRoutines::is_safefetch_fault(pc)) {
-      os::Bsd::ucontext_set_pc(uc, StubRoutines::continuation_for_safefetch_fault(pc));
-      return 1;
+    if (sig == SIGSEGV || sig == SIGBUS) {
+      if (pc && StubRoutines::is_safefetch_fault(pc)) {
+        os::Bsd::ucontext_set_pc(uc, StubRoutines::continuation_for_safefetch_fault(pc));
+        return 1;
+      }
     }
 
     address addr = (address) info->si_addr;
